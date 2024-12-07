@@ -1,125 +1,133 @@
-import os
 import streamlit as st
-from langchain_community.utilities.jira import JiraAPIWrapper
-from langchain_community.agent_toolkits.jira.toolkit import JiraToolkit
+from langchain.memory import ConversationBufferWindowMemory
 from langchain_openai import ChatOpenAI
 from langchain.agents import AgentExecutor, create_tool_calling_agent
-from langchain_core.prompts import ChatPromptTemplate
+from langchain import hub
 import pandas as pd
+from datetime import date
 
-# Title
-st.title("💬 Financial Support Chatbot with Jira Integration")
+# Show title and description.
+st.title("💬 Financial Support Chatbot")
 
-# Load dataset
-url = "https://raw.githubusercontent.com/JeanJMH/Financial_Classification/main/Classification_data.csv"
-st.write(f"Using dataset from: {url}")
+# Add a text input field for the GitHub raw URL
+url = st.text_input("Enter the GitHub raw URL of the CSV file:", 
+                    "https://raw.githubusercontent.com/JeanJMH/Financial_Classification/main/Classification_data.csv")
 
-try:
-    df1 = pd.read_csv(url)
-except Exception as e:
-    st.error(f"An error occurred while loading the dataset: {e}")
-    st.stop()
+# Load the dataset if a valid URL is provided
+if url:
+    try:
+        df1 = pd.read_csv(url)
+        st.write("CSV Data:")
+        st.write(df1)
+    except Exception as e:
+        st.error(f"An error occurred: {e}")
 
-product_categories = df1['Product'].unique().tolist()
+# Extract product, sub-product, and issue categories dynamically
+if 'Product' in df1.columns:
+    product_categories = df1['Product'].dropna().unique().tolist()
+else:
+    product_categories = []
+    st.warning("The CSV file does not contain a 'Product' column.")
 
-# Initialize chatbot memory and setup on first run
-if "memory" not in st.session_state:
+# Initialize session state
+if "memory" not in st.session_state:  # IMPORTANT
     model_type = "gpt-4o-mini"
 
-    # Initialize memory for the chatbot
-    st.session_state.memory = []
-    st.session_state.needs_clarification = False
+    # Initialize memory
+    max_number_of_exchanges = 10
+    st.session_state.memory = ConversationBufferWindowMemory(
+        memory_key="chat_history", 
+        k=max_number_of_exchanges, 
+        return_messages=True
+    )
 
-    # Initialize the OpenAI chatbot
-    st.session_state.chat = ChatOpenAI(openai_api_key=st.secrets["OpenAI_API_KEY"], model=model_type)
+    # LLM
+    chat = ChatOpenAI(openai_api_key=st.secrets["OpenAI_API_KEY"], model=model_type)
 
-# Display chat history
-for message in st.session_state.memory:
-    st.chat_message(message["role"]).write(message["content"])
+    # Tools
+    from langchain.agents import tool
 
-# User input
-if user_input := st.chat_input("How can I help?"):
-    st.chat_message("user").write(user_input)
-    st.session_state.memory.append({"role": "user", "content": user_input})
+    @tool
+    def datetoday(dummy: str) -> str:
+        """Returns today's date. Use this for any \
+        questions that need today's date to be answered. \
+        This tool returns a string with today's date."""
+        return "Today is " + str(date.today())
 
-    # Handle clarification logic
-    if st.session_state.needs_clarification:
-        combined_input = f"{st.session_state.memory[-2]['content']} {user_input}"
-        st.session_state.needs_clarification = False
-    else:
-        combined_input = user_input
+    tools = [datetoday]
 
-    # Classification logic
-    product_match = next((p for p in product_categories if p.lower() in combined_input.lower()), None)
+    # Create the prompt
+    from langchain_core.prompts import ChatPromptTemplate
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", f"You are a financial support assistant. Begin by greeting the user warmly and asking them to describe their issue. Wait for the user to describe their problem. Once the issue is described, classify the complaint strictly based on these possible categories: {product_categories}. After assigning a product, identify the sub-product and issue categories using the CSV dataset. Respond with confirmation that the issue has been forwarded to the relevant team."),
+            ("placeholder", "{chat_history}"),
+            ("human", "{input}"),
+            ("placeholder", "{agent_scratchpad}"),
+        ]
+    )
+    agent = create_tool_calling_agent(chat, tools, prompt)
+    st.session_state.agent_executor = AgentExecutor(agent=agent, tools=tools, memory=st.session_state.memory, verbose=True)
 
-    if not product_match:
-        if not st.session_state.needs_clarification:
-            st.session_state.needs_clarification = True
-            bot_response = (
-                "Could you please provide more details about your issue to help with classification?"
+
+# Display existing chat messages
+for message in st.session_state.memory.buffer:
+    st.chat_message(message.type).write(message.content)
+
+# Chat input and classification
+if prompt := st.chat_input("How can I help?"):
+    # Display user input
+    st.chat_message("user").write(prompt)
+
+    if df1 is not None and not df1.empty:
+        try:
+            # Step 1: Classify by Product
+            response_product = st.session_state.agent_executor.invoke({"input": prompt})['output']
+            assigned_product = next(
+                (product for product in product_categories if product in response_product),
+                None
             )
-            st.chat_message("assistant").write(bot_response)
-            st.session_state.memory.append({"role": "assistant", "content": bot_response})
-            st.stop()
-        else:
-            product_match = "Miscellaneous"
 
-    # Continue classification
-    subproduct_options = df1[df1['Product'] == product_match]['Sub-product'].unique()
-    subproduct_match = next((s for s in subproduct_options if s.lower() in combined_input.lower()), "General")
+            if assigned_product:
+                # Step 2: Classify by Sub-product
+                subproduct_options = df1[df1['Product'] == assigned_product]['Sub-product'].dropna().unique().tolist()
+                response_subproduct = st.session_state.agent_executor.invoke({"input": f"Classify this issue into a sub-product: {prompt}"})['output']
+                assigned_subproduct = next(
+                    (subproduct for subproduct in subproduct_options if subproduct in response_subproduct),
+                    None
+                )
 
-    issue_options = df1[
-        (df1['Product'] == product_match) & (df1['Sub-product'] == subproduct_match)
-    ]['Issue'].unique()
-    issue_match = next((i for i in issue_options if i.lower() in combined_input.lower()), "General Issue")
+                if assigned_subproduct:
+                    # Step 3: Classify by Issue
+                    issue_options = df1[(df1['Product'] == assigned_product) & 
+                                        (df1['Sub-product'] == assigned_subproduct)]['Issue'].dropna().unique().tolist()
+                    response_issue = st.session_state.agent_executor.invoke({"input": f"Classify this issue: {prompt}"})['output']
+                    assigned_issue = next(
+                        (issue for issue in issue_options if issue in response_issue),
+                        None
+                    )
 
-    # Provide classification
-    classification_response = (
-        f"Complaint classified as:\n"
-        f"- Product: {product_match}\n"
-        f"- Sub-product: {subproduct_match}\n"
-        f"- Issue: {issue_match}\n\n"
-        f"Creating a Jira task..."
-    )
-    st.chat_message("assistant").write(classification_response)
-    st.session_state.memory.append({"role": "assistant", "content": classification_response})
+                    if assigned_issue:
+                        # Respond to user
+                        st.session_state.memory.buffer.append({"type": "assistant", "content": (
+                            f"Thank you for your message. Your issue has been classified under:\n"
+                            f"- Product: {assigned_product}\n"
+                            f"- Sub-product: {assigned_subproduct}\n"
+                            f"- Issue: {assigned_issue}\n"
+                            "A ticket has been created, and it has been forwarded to the appropriate team. They will reach out to you shortly."
+                        )})
+                    else:
+                        st.session_state.memory.buffer.append({"type": "assistant", "content": "Could not classify the issue. Forwarding to a human assistant."})
+                else:
+                    st.session_state.memory.buffer.append({"type": "assistant", "content": "Could not classify the sub-product. Forwarding to a human assistant."})
+            else:
+                st.session_state.memory.buffer.append({"type": "assistant", "content": "Could not classify the product. Forwarding to a human assistant."})
 
-    # Jira task creation
-    os.environ["JIRA_API_TOKEN"] = st.secrets["JIRA_API_TOKEN"]
-    os.environ["JIRA_USERNAME"] = "rich@bu.edu"
-    os.environ["JIRA_INSTANCE_URL"] = "https://is883-genai-r.atlassian.net/"
-    os.environ["JIRA_CLOUD"] = "True"
+        except Exception as e:
+            st.error(f"An error occurred during classification: {e}")
+    else:
+        st.session_state.memory.buffer.append({"type": "assistant", "content": "The complaint could not be classified due to missing or invalid data."})
 
-    jira = JiraAPIWrapper()
-    toolkit = JiraToolkit.from_jira_api_wrapper(jira)
-    tools = toolkit.get_tools()
-
-    # Fix tool names and descriptions
-    for idx, tool in enumerate(tools):
-        tools[idx].name = tools[idx].name.replace(" ", "_")
-        if "create_issue" in tools[idx].name:
-            tools[idx].description += " Ensure to specify the project ID."
-
-    # Prepare task creation prompt
-    question = (
-        f"Create a task in my project with the key FST. Assign it to rich@bu.edu. "
-        f"The summary is '{issue_match}'. "
-        f"Set the priority to 'Highest' if the issue involves fraud, otherwise set it to 'High'. "
-        f"The description is '{combined_input}'."
-    )
-
-    # Create the Jira agent executor
-    try:
-        chat = st.session_state.chat  # Ensure chat is referenced from session state
-        agent = create_tool_calling_agent(chat, tools, ChatPromptTemplate.from_messages([]))
-        agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
-
-        jira_result = agent_executor.invoke({"input": question})
-        task_creation_response = "Task successfully created in Jira!"
-        st.chat_message("assistant").write(task_creation_response)
-        st.session_state.memory.append({"role": "assistant", "content": task_creation_response})
-        st.json(jira_result)
-    except Exception as e:
-        error_response = f"Failed to create the Jira task: {e}"
-        st.chat_message("assistant").write(error_response)
-        st.session_state.memory.append({"role": "assistant", "content": error_response})
+    # Display response
+    for message in st.session_state.memory.buffer:
+        st.chat_message(message.get("type", "assistant")).write(message.get("content", ""))
