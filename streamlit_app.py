@@ -7,9 +7,7 @@ from openai import OpenAI
 st.title("Customer Complaint Classifier")
 
 # Load API Key from Streamlit Secrets
-if "OPENAI_API_KEY" not in st.secrets:
-    st.error("Please set your OpenAI API key in Streamlit Secrets!")
-else:
+
     os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
     client = OpenAI()
 
