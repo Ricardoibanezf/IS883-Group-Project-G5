@@ -7,7 +7,6 @@ from openai import OpenAI
 st.title("Customer Complaint Classifier")
 
 # Load API Key from Streamlit Secrets
-
 os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
 client = OpenAI()
 
@@ -78,14 +77,6 @@ if st.button("Classify Complaint") and client_complaint:
         )
         assigned_issue = response_issue.choices[0].message.content.strip()
 
-        # Append results to classified_data
-        classified_data.append({
-            "Complaint": client_complaint,
-            "Assigned Product": assigned_product,
-            "Assigned Sub-product": assigned_subproduct,
-            "Assigned Issue": assigned_issue
-        })
-
-         # Custom response message
+        # Custom response message
         st.header("Classification Message")
-        st.write(f"I am so sorry for the problem you are facing. I have derived this with the corresponding area and your problem will be solved in 5 hours.")
+        st.write("I am so sorry for the problem you are facing. I have derived this with the corresponding area and your problem will be solved in 5 hours.")
