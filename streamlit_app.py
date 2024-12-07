@@ -79,8 +79,8 @@ if st.button("Classify Complaint") and client_complaint:
     # Custom response message
     st.header("Classification Message")
     st.write("I am so sorry for the problem you are facing. I have derived this with the corresponding area and your problem will be solved in 5 hours.")
-    
-st.header("Classification Results")
+
+    st.header("Classification Results")
     st.write(f"**Assigned Product**: {assigned_product}")
     st.write(f"**Assigned Sub-product**: {assigned_subproduct}")
     st.write(f"**Assigned Issue**: {assigned_issue}")
