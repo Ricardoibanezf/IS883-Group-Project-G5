@@ -134,17 +134,18 @@ os.environ["JIRA_CLOUD"] = "True"
 
 #project_key = "LLMTS"
 
+assigned_issue= "Managing an Account"
+client_complaint = "I made a purchase and it was disputed"
+
 question = (
     f"Create a task in my project with the key FST. Take into account tha the Key of this project is FST "
     f"The task's type is 'Task', assignee to rich@bu.edu,"
-    f"The summary is 'prueba'."
-    #f"with the priority 'prueba' and the description '{client_complaint}'. "
-    f"Always assign 'Highest' priority if the 'hola es prueba' is related to fraudulent activities. Fraudulent activities include terms or contexts like unauthorized access, theft, phishing, or stolen accounts. Be strict in interpreting fraud-related issues."
+    f"The summary is '{assigned_issue}'."
+    #f"with the priority '{priority}' and the description '{client_complaint}'. "
+    f"Always assign 'Highest' priority if the '{assigned_issue}' is related to fraudulent activities. Fraudulent activities include terms or contexts like unauthorized access, theft, phishing, or stolen accounts. Be strict in interpreting fraud-related issues."
     f"with the priority 'High' for other type of issues"
-    f"with the description 'hola prueba'. "
+    f"with the description '{client_complaint}'. "
     #f"with a status  'TO DO'. "
-
-
 )
 
 #agent_executor.invoke({"input": question}, handle_parsing_errors=True)
