@@ -82,9 +82,4 @@ if client_complaint:
         "Assigned Issue": assigned_issue
     })
 
-    # Display the final classification
-    st.subheader("Final Classification")
-    st.write("Complaint:", client_complaint)
-    st.write("Assigned Product:", assigned_product)
-    st.write("Assigned Sub-product:", assigned_subproduct)
-    st.write("Assigned Issue:", assigned_issue)
+  
