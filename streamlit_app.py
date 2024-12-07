@@ -14,7 +14,7 @@ client = OpenAI()
 url = "https://raw.githubusercontent.com/JeanJMH/Financial_Classification/refs/heads/main/Classification_data.csv"
 df1 = pd.read_csv(url)
 
-# Chatbot Interface
+# Initialize Chatbot Messages
 if "messages" not in st.session_state:
     st.session_state.messages = [
         {"role": "assistant", "content": "Hello! I'm here to help classify your complaint. Please describe your issue."}
@@ -28,7 +28,7 @@ for message in st.session_state.messages:
         st.markdown(f"**Bot:** {message['content']}")
 
 # User Input
-user_input = st.text_input("Your message:", key="user_input")
+user_input = st.text_input("Your message:")
 
 if user_input:
     # Add user message to session state
@@ -86,7 +86,7 @@ if user_input:
     )
     assigned_issue = response_issue.choices[0].message.content.strip()
 
-    # Assistant response
+    # Bot Response
     bot_response = (
         f"I understand your issue. Here is the classification:\n\n"
         f"- **Product:** {assigned_product}\n"
@@ -96,5 +96,8 @@ if user_input:
     )
     st.session_state.messages.append({"role": "assistant", "content": bot_response})
 
-    # Clear input box
+    # Clear user input (to refresh the chat interface)
+    st.session_state["user_input"] = ""
 
+# Force Streamlit to re-render the chat interface
+st.text_input("Your message:", value="", key="user_input")
