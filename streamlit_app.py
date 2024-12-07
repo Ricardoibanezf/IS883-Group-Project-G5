@@ -7,6 +7,8 @@ from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain_core.prompts import ChatPromptTemplate
 from datetime import date
 import pandas as pd
+from langchain.memory import ConversationBufferWindowMemory
+
 
 # Title
 st.title("💬 Financial Support Chatbot with Jira Integration")
