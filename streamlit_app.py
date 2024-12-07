@@ -98,6 +98,3 @@ if user_input:
 
     # Clear user input (to refresh the chat interface)
     st.session_state["user_input"] = ""
-
-# Force Streamlit to re-render the chat interface
-st.text_input("Your message:", value="", key="user_input")
