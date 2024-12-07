@@ -131,8 +131,8 @@ import streamlit as st
 
 # Environment variables for Jira setup
 os.environ["JIRA_API_TOKEN"] = st.secrets["JIRA_API_TOKEN"]
-os.environ["JIRA_USERNAME"] = st.secrets["JIRA_USERNAME"]
-os.environ["JIRA_INSTANCE_URL"] = st.secrets["JIRA_INSTANCE_URL"]
+os.environ["JIRA_USERNAME"] = "rich@bu.edu"
+os.environ["JIRA_INSTANCE_URL"] = "https://is883-genai-r.atlassian.net/"
 os.environ["JIRA_CLOUD"] = "True"
 
 # Function to create a Jira task
