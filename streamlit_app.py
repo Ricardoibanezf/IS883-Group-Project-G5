@@ -80,3 +80,17 @@ if st.button("Classify Complaint") and client_complaint:
         )
         assigned_issue = response_issue.choices[0].message.content.strip()
 
+        # Append results to classified_data
+        classified_data.append({
+            "Complaint": client_complaint,
+            "Assigned Product": assigned_product,
+            "Assigned Sub-product": assigned_subproduct,
+            "Assigned Issue": assigned_issue
+        })
+
+        # Display classification results
+        st.header("Classification Results")
+        st.json(classified_data)
+
+    except Exception as e:
+        st.error(f"An error occurred during classification: {e}")
