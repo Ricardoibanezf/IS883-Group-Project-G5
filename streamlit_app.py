@@ -80,3 +80,6 @@ if st.button("Classify Complaint") and client_complaint:
         # Custom response message
         st.header("Classification Message")
         st.write("I am so sorry for the problem you are facing. I have derived this with the corresponding area and your problem will be solved in 5 hours.")
+
+    except Exception as e:
+        st.error(f"An error occurred during classification: {e}")
