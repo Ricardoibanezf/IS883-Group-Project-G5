@@ -164,7 +164,7 @@ for idx, tool in enumerate(toolkit.tools):
 tools = toolkit.get_tools()
 
 # LLM Setup for LangChain
-chat = ChatOpenAI(openai_api_key=my_secret_key, model="gpt-4o-mini")
+chat = ChatOpenAI(openai_api_key=st.secrets["OpenAI_API_KEY"], model="gpt-4o-mini")
 
 # Prepare the LangChain ReAct Agent
 prompt = hub.pull("hwchase17/react")
