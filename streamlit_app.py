@@ -1,108 +1,121 @@
 import streamlit as st
+from langchain.memory import ConversationBufferWindowMemory
+from langchain_openai import ChatOpenAI
+from langchain.agents import AgentExecutor, create_tool_calling_agent
+from langchain_core.prompts import ChatPromptTemplate
+from datetime import date
 import pandas as pd
-import os
-from openai import OpenAI
 
-# Streamlit App
-st.title("Customer Complaint Chatbot")
+# Title
+st.title("💬 Financial Support Chatbot")
 
-# Load API Key from Streamlit Secrets
-os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
-client = OpenAI()
+# Load the dataset
+url = "https://raw.githubusercontent.com/JeanJMH/Financial_Classification/main/Classification_data.csv"
+st.write(f"Using dataset from: {url}")
 
-# Load Dataset
-url = "https://raw.githubusercontent.com/JeanJMH/Financial_Classification/refs/heads/main/Classification_data.csv"
-df1 = pd.read_csv(url)
+try:
+    df1 = pd.read_csv(url)
+except Exception as e:
+    st.error(f"An error occurred while loading the dataset: {e}")
 
-# Initialize Chatbot Messages
-if "messages" not in st.session_state:
-    st.session_state.messages = [
-        {"role": "assistant", "content": "Hello! I'm here to help classify your complaint. Please describe your issue."}
-    ]
+# Extract unique product categories
+product_categories = df1['Product'].unique().tolist()
 
-# Display Chat History
-for message in st.session_state.messages:
-    if message["role"] == "user":
-        st.markdown(f"**You:** {message['content']}")
-    else:
-        st.markdown(f"**Bot:** {message['content']}")
+# Initialize memory and the chatbot on the first run
+if "memory" not in st.session_state:
+    model_type = "gpt-4o-mini"
 
-# User Input Form
-with st.form("user_input_form", clear_on_submit=True):
-    user_input = st.text_input("Your message:")
-    submitted = st.form_submit_button("Send")
+    # Initialize memory for the conversation
+    max_number_of_exchanges = 10
+    st.session_state.memory = ConversationBufferWindowMemory(
+        memory_key="chat_history", k=max_number_of_exchanges, return_messages=True
+    )
 
-if submitted and user_input:
-    # Add user message to session state
-    st.session_state.messages.append({"role": "user", "content": user_input})
+    # Initialize the language model
+    chat = ChatOpenAI(openai_api_key=st.secrets["OpenAI_API_KEY"], model=model_type)
 
-    # If the input is too generic, respond with a friendly clarification message
-    if len(user_input.split()) < 3:
-        bot_response = "I'm here to help with specific complaints. Could you describe your issue in more detail?"
-    else:
-        # Classification process
-        client_complaint = user_input
+    # Tool: Today's Date
+    from langchain.agents import tool
 
+    @tool
+    def classify_complaint(complaint: str) -> str:
+        """Classifies a complaint based on the dataset."""
         # Classify by Product
-        product_categories = df1['Product'].unique()
-        response_product = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": (
-                    f"You are a financial expert who classifies customer complaints based on these Product categories: {product_categories.tolist()}. "
-                    "Respond with the exact product as written there."
-                )},
-                {"role": "user", "content": f"This is my issue: '{client_complaint}'."}
-            ],
-            max_tokens=20,
-            temperature=0.1
-        )
-        assigned_product = response_product.choices[0].message.content.strip()
+        product_match = None
+        for product in product_categories:
+            if product.lower() in complaint.lower():
+                product_match = product
+                break
+
+        if not product_match:
+            return "I'm sorry, I couldn't classify the complaint into a product category. Please provide more details."
 
         # Classify by Sub-product
-        subproduct_options = df1[df1['Product'] == assigned_product]['Sub-product'].unique()
-        response_subproduct = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": (
-                    f"You are a financial expert who classifies customer complaints based on these Sub-product categories under the product '{assigned_product}': {subproduct_options.tolist()}. "
-                    "Respond with the exact sub-product as written there."
-                )},
-                {"role": "user", "content": f"This is my issue: '{client_complaint}'."}
-            ],
-            max_tokens=20,
-            temperature=0.1
-        )
-        assigned_subproduct = response_subproduct.choices[0].message.content.strip()
+        subproduct_options = df1[df1['Product'] == product_match]['Sub-product'].unique()
+        subproduct_match = None
+        for subproduct in subproduct_options:
+            if subproduct.lower() in complaint.lower():
+                subproduct_match = subproduct
+                break
+
+        if not subproduct_match:
+            subproduct_match = "No specific sub-product match found."
 
         # Classify by Issue
-        issue_options = df1[(df1['Product'] == assigned_product) &
-                            (df1['Sub-product'] == assigned_subproduct)]['Issue'].unique()
-        response_issue = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": (
-                    f"You are a financial expert who classifies customer complaints based on these Issue categories under the product '{assigned_product}' and sub-product '{assigned_subproduct}': {issue_options.tolist()}. "
-                    "Respond with the exact issue as written there."
-                )},
-                {"role": "user", "content": f"This is my issue: '{client_complaint}'."}
-            ],
-            max_tokens=20,
-            temperature=0.1
+        issue_options = df1[(df1['Product'] == product_match) &
+                            (df1['Sub-product'] == subproduct_match)]['Issue'].unique()
+        issue_match = None
+        for issue in issue_options:
+            if issue.lower() in complaint.lower():
+                issue_match = issue
+                break
+
+        if not issue_match:
+            issue_match = "No specific issue match found."
+
+        # Format the classification response
+        return (
+            f"Complaint classified as:\n"
+            f"- **Product:** {product_match}\n"
+            f"- **Sub-product:** {subproduct_match}\n"
+            f"- **Issue:** {issue_match}"
         )
-        assigned_issue = response_issue.choices[0].message.content.strip()
 
-        # Construct the bot's response
-        if "I'm sorry" not in assigned_product:
-            bot_response = (
-                f"I understand your issue. Here is the classification:\n\n"
-                f"- **Product:** {assigned_product}\n"
-                f"- **Sub-product:** {assigned_subproduct}\n"
-                f"- **Issue:** {assigned_issue}\n\n"
-                f"If you have any further questions, let me know!"
-            )
-        else:
-            bot_response = "I'm sorry, but I couldn't classify your issue. Could you provide more details?"
+    tools = [classify_complaint]
 
-    # Add bot response to session state
-    st.session_state.messages.append({"role": "assistant", "content": bot_response})
+    # Prompt for complaint classification
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            (
+                "system",
+                f"You are a financial support assistant. Begin by greeting the user warmly and asking them to describe their issue. "
+                f"Once the issue is described, classify the complaint strictly based on these possible categories: {product_categories}. "
+                f"Use the tool to classify complaints accurately. Inform the user that a ticket has been created and provide the classification. "
+                f"Reassure them that the issue will be forwarded to the appropriate support team. "
+                f"Maintain a professional and empathetic tone throughout."
+            ),
+            ("placeholder", "{chat_history}"),
+            ("human", "{input}"),
+            ("placeholder", "{agent_scratchpad}"),
+        ]
+    )
+
+    # Create the agent with memory
+    agent = create_tool_calling_agent(chat, tools, prompt)
+    st.session_state.agent_executor = AgentExecutor(
+        agent=agent, tools=tools, memory=st.session_state.memory, verbose=True
+    )
+
+# Display chat history
+for message in st.session_state.memory.buffer:
+    st.chat_message(message.type).write(message.content)
+
+# Chat input
+if user_input := st.chat_input("How can I help?"):
+    st.chat_message("user").write(user_input)
+
+    # Generate response from the agent
+    response = st.session_state.agent_executor.invoke({"input": user_input})["output"]
+
+    # Display the assistant's response
+    st.chat_message("assistant").write(response)
