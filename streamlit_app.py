@@ -2,132 +2,120 @@ import streamlit as st
 from langchain.memory import ConversationBufferWindowMemory
 from langchain_openai import ChatOpenAI
 from langchain.agents import AgentExecutor, create_tool_calling_agent
-from langchain import hub
-import pandas as pd
+from langchain_core.prompts import ChatPromptTemplate
 from datetime import date
+import pandas as pd
 
-# Show title and description.
+# Title
 st.title("💬 Financial Support Chatbot")
 
-# Add a text input field for the GitHub raw URL
-url = st.text_input("Enter the GitHub raw URL of the CSV file:", 
-                    "https://raw.githubusercontent.com/JeanJMH/Financial_Classification/main/Classification_data.csv")
+# Load the dataset
+url = "https://raw.githubusercontent.com/JeanJMH/Financial_Classification/main/Classification_data.csv"
+st.write(f"Using dataset from: {url}")
 
-# Load the dataset if a valid URL is provided
-if url:
-    try:
-        df1 = pd.read_csv(url)
-        st.write("CSV Data:")
-        st.write(df1)
-    except Exception as e:
-        st.error(f"An error occurred: {e}")
+try:
+    df1 = pd.read_csv(url)
+except Exception as e:
+    st.error(f"An error occurred while loading the dataset: {e}")
 
-# Extract product, sub-product, and issue categories dynamically
-if 'Product' in df1.columns:
-    product_categories = df1['Product'].dropna().unique().tolist()
-else:
-    product_categories = []
-    st.warning("The CSV file does not contain a 'Product' column.")
+# Extract unique product categories
+product_categories = df1['Product'].unique().tolist()
 
-# Initialize session state
-if "memory" not in st.session_state:  # IMPORTANT
+# Initialize memory and the chatbot on the first run
+if "memory" not in st.session_state:
     model_type = "gpt-4o-mini"
 
-    # Initialize memory
+    # Initialize memory for the conversation
     max_number_of_exchanges = 10
     st.session_state.memory = ConversationBufferWindowMemory(
-        memory_key="chat_history", 
-        k=max_number_of_exchanges, 
-        return_messages=True
+        memory_key="chat_history", k=max_number_of_exchanges, return_messages=True
     )
 
-    # LLM
+    # Initialize the language model
     chat = ChatOpenAI(openai_api_key=st.secrets["OpenAI_API_KEY"], model=model_type)
 
-    # Tools
+    # Tool: Today's Date
     from langchain.agents import tool
 
     @tool
-    def datetoday(dummy: str) -> str:
-        """Returns today's date. Use this for any \
-        questions that need today's date to be answered. \
-        This tool returns a string with today's date."""
-        return "Today is " + str(date.today())
+    def classify_complaint(complaint: str) -> str:
+        """Classifies a complaint based on the dataset."""
+        # Classify by Product
+        product_match = None
+        for product in product_categories:
+            if product.lower() in complaint.lower():
+                product_match = product
+                break
 
-    tools = [datetoday]
+        if not product_match:
+            return "I'm sorry, I couldn't classify the complaint into a product category. Please provide more details."
 
-    # Create the prompt
-    from langchain_core.prompts import ChatPromptTemplate
+        # Classify by Sub-product
+        subproduct_options = df1[df1['Product'] == product_match]['Sub-product'].unique()
+        subproduct_match = None
+        for subproduct in subproduct_options:
+            if subproduct.lower() in complaint.lower():
+                subproduct_match = subproduct
+                break
+
+        if not subproduct_match:
+            subproduct_match = "No specific sub-product match found."
+
+        # Classify by Issue
+        issue_options = df1[(df1['Product'] == product_match) &
+                            (df1['Sub-product'] == subproduct_match)]['Issue'].unique()
+        issue_match = None
+        for issue in issue_options:
+            if issue.lower() in complaint.lower():
+                issue_match = issue
+                break
+
+        if not issue_match:
+            issue_match = "No specific issue match found."
+
+        # Format the classification response
+        return (
+            f"Complaint classified as:\n"
+            f"- **Product:** {product_match}\n"
+            f"- **Sub-product:** {subproduct_match}\n"
+            f"- **Issue:** {issue_match}"
+        )
+
+    tools = [classify_complaint]
+
+    # Prompt for complaint classification
     prompt = ChatPromptTemplate.from_messages(
         [
-            ("system", f"You are a financial support assistant. Begin by greeting the user warmly and asking them to describe their issue. Wait for the user to describe their problem. Once the issue is described, classify the complaint strictly based on these possible categories: {product_categories}. After assigning a product, identify the sub-product and issue categories using the CSV dataset. Respond with confirmation that the issue has been forwarded to the relevant team."),
+            (
+                "system",
+                f"You are a financial support assistant. Begin by greeting the user warmly and asking them to describe their issue. "
+                f"Once the issue is described, classify the complaint strictly based on these possible categories: {product_categories}. "
+                f"Use the tool to classify complaints accurately. Inform the user that a ticket has been created and provide the classification. "
+                f"Reassure them that the issue will be forwarded to the appropriate support team. "
+                f"Maintain a professional and empathetic tone throughout."
+            ),
             ("placeholder", "{chat_history}"),
             ("human", "{input}"),
             ("placeholder", "{agent_scratchpad}"),
         ]
     )
+
+    # Create the agent with memory
     agent = create_tool_calling_agent(chat, tools, prompt)
-    st.session_state.agent_executor = AgentExecutor(agent=agent, tools=tools, memory=st.session_state.memory, verbose=True)
+    st.session_state.agent_executor = AgentExecutor(
+        agent=agent, tools=tools, memory=st.session_state.memory, verbose=True
+    )
 
-
-# Display existing chat messages
+# Display chat history
 for message in st.session_state.memory.buffer:
     st.chat_message(message.type).write(message.content)
 
-# Chat input and classification
-if prompt := st.chat_input("How can I help?"):
-    # Display user input
-    st.chat_message("user").write(prompt)
+# Chat input
+if user_input := st.chat_input("How can I help?"):
+    st.chat_message("user").write(user_input)
 
-    if df1 is not None and not df1.empty:
-        try:
-            # Step 1: Classify by Product
-            response_product = st.session_state.agent_executor.invoke({"input": prompt})['output']
-            assigned_product = next(
-                (product for product in product_categories if product in response_product),
-                None
-            )
+    # Generate response from the agent
+    response = st.session_state.agent_executor.invoke({"input": user_input})["output"]
 
-            if assigned_product:
-                # Step 2: Classify by Sub-product
-                subproduct_options = df1[df1['Product'] == assigned_product]['Sub-product'].dropna().unique().tolist()
-                response_subproduct = st.session_state.agent_executor.invoke({"input": f"Classify this issue into a sub-product: {prompt}"})['output']
-                assigned_subproduct = next(
-                    (subproduct for subproduct in subproduct_options if subproduct in response_subproduct),
-                    None
-                )
-
-                if assigned_subproduct:
-                    # Step 3: Classify by Issue
-                    issue_options = df1[(df1['Product'] == assigned_product) & 
-                                        (df1['Sub-product'] == assigned_subproduct)]['Issue'].dropna().unique().tolist()
-                    response_issue = st.session_state.agent_executor.invoke({"input": f"Classify this issue: {prompt}"})['output']
-                    assigned_issue = next(
-                        (issue for issue in issue_options if issue in response_issue),
-                        None
-                    )
-
-                    if assigned_issue:
-                        # Respond to user
-                        st.session_state.memory.buffer.append({"type": "assistant", "content": (
-                            f"Thank you for your message. Your issue has been classified under:\n"
-                            f"- Product: {assigned_product}\n"
-                            f"- Sub-product: {assigned_subproduct}\n"
-                            f"- Issue: {assigned_issue}\n"
-                            "A ticket has been created, and it has been forwarded to the appropriate team. They will reach out to you shortly."
-                        )})
-                    else:
-                        st.session_state.memory.buffer.append({"type": "assistant", "content": "Could not classify the issue. Forwarding to a human assistant."})
-                else:
-                    st.session_state.memory.buffer.append({"type": "assistant", "content": "Could not classify the sub-product. Forwarding to a human assistant."})
-            else:
-                st.session_state.memory.buffer.append({"type": "assistant", "content": "Could not classify the product. Forwarding to a human assistant."})
-
-        except Exception as e:
-            st.error(f"An error occurred during classification: {e}")
-    else:
-        st.session_state.memory.buffer.append({"type": "assistant", "content": "The complaint could not be classified due to missing or invalid data."})
-
-    # Display response
-    for message in st.session_state.memory.buffer:
-        st.chat_message(message.get("type", "assistant")).write(message.get("content", ""))
+    # Display the assistant's response
+    st.chat_message("assistant").write(response)
