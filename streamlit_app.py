@@ -8,8 +8,8 @@ st.title("Customer Complaint Classifier")
 
 # Load API Key from Streamlit Secrets
 
-    os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
-    client = OpenAI()
+os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
+client = OpenAI()
 
 # Load Dataset
 st.header("Classification Dataset")
