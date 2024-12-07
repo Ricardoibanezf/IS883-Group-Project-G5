@@ -4,29 +4,41 @@ import os
 from openai import OpenAI
 
 # Streamlit App
-st.title("Customer Complaint Classifier")
+st.title("Customer Complaint Chatbot")
 
 # Load API Key from Streamlit Secrets
 os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
 client = OpenAI()
 
 # Load Dataset
-st.header("Classification Dataset")
 url = "https://raw.githubusercontent.com/JeanJMH/Financial_Classification/refs/heads/main/Classification_data.csv"
 df1 = pd.read_csv(url)
-st.write("Loaded Dataset:")
-st.dataframe(df1)
 
-# Client Complaint Input
-st.header("Client Complaint")
-client_complaint = st.text_area("Enter the client's complaint:", "")
-if st.button("Classify Complaint") and client_complaint:
+# Chatbot Interface
+if "messages" not in st.session_state:
+    st.session_state.messages = [
+        {"role": "assistant", "content": "Hello! I'm here to help classify your complaint. Please describe your issue."}
+    ]
+
+# Display Chat History
+for message in st.session_state.messages:
+    if message["role"] == "user":
+        st.markdown(f"**You:** {message['content']}")
+    else:
+        st.markdown(f"**Bot:** {message['content']}")
+
+# User Input
+user_input = st.text_input("Your message:", key="user_input")
+
+if user_input:
+    # Add user message to session state
+    st.session_state.messages.append({"role": "user", "content": user_input})
+
     # Classification process
-    classified_data = []
+    client_complaint = user_input
 
     # Classify by Product
     product_categories = df1['Product'].unique()
-
     response_product = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
@@ -43,7 +55,6 @@ if st.button("Classify Complaint") and client_complaint:
 
     # Classify by Sub-product
     subproduct_options = df1[df1['Product'] == assigned_product]['Sub-product'].unique()
-
     response_subproduct = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
@@ -61,7 +72,6 @@ if st.button("Classify Complaint") and client_complaint:
     # Classify by Issue
     issue_options = df1[(df1['Product'] == assigned_product) &
                         (df1['Sub-product'] == assigned_subproduct)]['Issue'].unique()
-
     response_issue = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
@@ -76,11 +86,15 @@ if st.button("Classify Complaint") and client_complaint:
     )
     assigned_issue = response_issue.choices[0].message.content.strip()
 
-    # Custom response message
-    st.header("Classification Message")
-    st.write("I am so sorry for the problem you are facing. I have derived this with the corresponding area and your problem will be solved in 5 hours.")
+    # Assistant response
+    bot_response = (
+        f"I understand your issue. Here is the classification:\n\n"
+        f"- **Product:** {assigned_product}\n"
+        f"- **Sub-product:** {assigned_subproduct}\n"
+        f"- **Issue:** {assigned_issue}\n\n"
+        f"If you have any further questions, let me know!"
+    )
+    st.session_state.messages.append({"role": "assistant", "content": bot_response})
 
-    st.header("Classification Results")
-    st.write(f"**Assigned Product**: {assigned_product}")
-    st.write(f"**Assigned Sub-product**: {assigned_subproduct}")
-    st.write(f"**Assigned Issue**: {assigned_issue}")
+    # Clear input box
+    st.experimental_rerun()
