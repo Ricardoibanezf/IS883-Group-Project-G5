@@ -1,5 +1,7 @@
+import os
 import streamlit as st
-from langchain.memory import ConversationBufferWindowMemory
+from langchain_community.utilities.jira import JiraAPIWrapper
+from langchain_community.agent_toolkits.jira.toolkit import JiraToolkit
 from langchain_openai import ChatOpenAI
 from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain_core.prompts import ChatPromptTemplate
@@ -7,9 +9,9 @@ from datetime import date
 import pandas as pd
 
 # Title
-st.title("💬 Financial Support Chatbot")
+st.title("💬 Financial Support Chatbot with Jira Integration")
 
-# Load the dataset
+# Load dataset
 url = "https://raw.githubusercontent.com/JeanJMH/Financial_Classification/main/Classification_data.csv"
 st.write(f"Using dataset from: {url}")
 
@@ -18,20 +20,18 @@ try:
 except Exception as e:
     st.error(f"An error occurred while loading the dataset: {e}")
 
-# Extract unique product categories
 product_categories = df1['Product'].unique().tolist()
 
-# Initialize memory and the chatbot on the first run
+# Initialize chatbot memory and setup on first run
 if "memory" not in st.session_state:
     model_type = "gpt-4o-mini"
 
-    # Initialize memory for the conversation
-    max_number_of_exchanges = 10
+    # Memory for the chatbot
     st.session_state.memory = ConversationBufferWindowMemory(
-        memory_key="chat_history", k=max_number_of_exchanges, return_messages=True
+        memory_key="chat_history", k=10, return_messages=True
     )
 
-    # Initialize the language model
+    # Initialize the OpenAI chatbot
     chat = ChatOpenAI(openai_api_key=st.secrets["OpenAI_API_KEY"], model=model_type)
 
     # Tool: Today's Date
@@ -40,59 +40,29 @@ if "memory" not in st.session_state:
     @tool
     def classify_complaint(complaint: str) -> str:
         """Classifies a complaint based on the dataset."""
-        # Classify by Product
-        product_match = None
-        for product in product_categories:
-            if product.lower() in complaint.lower():
-                product_match = product
-                break
-
+        product_match = next((p for p in product_categories if p.lower() in complaint.lower()), None)
         if not product_match:
-            return "I'm sorry, I couldn't classify the complaint into a product category. Please provide more details."
+            return "I'm sorry, I couldn't classify the complaint. Please provide more details."
 
-        # Classify by Sub-product
         subproduct_options = df1[df1['Product'] == product_match]['Sub-product'].unique()
-        subproduct_match = None
-        for subproduct in subproduct_options:
-            if subproduct.lower() in complaint.lower():
-                subproduct_match = subproduct
-                break
+        subproduct_match = next((s for s in subproduct_options if s.lower() in complaint.lower()), "No match")
 
-        if not subproduct_match:
-            subproduct_match = "No specific sub-product match found."
+        issue_options = df1[
+            (df1['Product'] == product_match) & (df1['Sub-product'] == subproduct_match)
+        ]['Issue'].unique()
+        issue_match = next((i for i in issue_options if i.lower() in complaint.lower()), "No match")
 
-        # Classify by Issue
-        issue_options = df1[(df1['Product'] == product_match) &
-                            (df1['Sub-product'] == subproduct_match)]['Issue'].unique()
-        issue_match = None
-        for issue in issue_options:
-            if issue.lower() in complaint.lower():
-                issue_match = issue
-                break
-
-        if not issue_match:
-            issue_match = "No specific issue match found."
-
-        # Format the classification response
-        return (
-            f"Complaint classified as:\n"
-            f"- **Product:** {product_match}\n"
-            f"- **Sub-product:** {subproduct_match}\n"
-            f"- **Issue:** {issue_match}"
-        )
+        return f"{product_match}|{subproduct_match}|{issue_match}"
 
     tools = [classify_complaint]
 
-    # Prompt for complaint classification
+    # Chat prompt
     prompt = ChatPromptTemplate.from_messages(
         [
             (
                 "system",
-                f"You are a financial support assistant. Begin by greeting the user warmly and asking them to describe their issue. "
-                f"Once the issue is described, classify the complaint strictly based on these possible categories: {product_categories}. "
-                f"Use the tool to classify complaints accurately. Inform the user that a ticket has been created and provide the classification. "
-                f"Reassure them that the issue will be forwarded to the appropriate support team. "
-                f"Maintain a professional and empathetic tone throughout."
+                f"You are a financial support assistant. Greet the user and classify complaints based on these categories: {product_categories}. "
+                "Use the classify_complaint tool to determine the product, sub-product, and issue, then send the issue to Jira for ticket creation."
             ),
             ("placeholder", "{chat_history}"),
             ("human", "{input}"),
@@ -100,7 +70,7 @@ if "memory" not in st.session_state:
         ]
     )
 
-    # Create the agent with memory
+    # Create chatbot agent
     agent = create_tool_calling_agent(chat, tools, prompt)
     st.session_state.agent_executor = AgentExecutor(
         agent=agent, tools=tools, memory=st.session_state.memory, verbose=True
@@ -110,81 +80,59 @@ if "memory" not in st.session_state:
 for message in st.session_state.memory.buffer:
     st.chat_message(message.type).write(message.content)
 
-# Chat input
+# User input
 if user_input := st.chat_input("How can I help?"):
     st.chat_message("user").write(user_input)
 
-    # Generate response from the agent
+    # Process user input
     response = st.session_state.agent_executor.invoke({"input": user_input})["output"]
 
-    # Display the assistant's response
-    st.chat_message("assistant").write(response)
+    # Parse classification output
+    if "|" in response:
+        product, subproduct, assigned_issue = response.split("|")
+        st.chat_message("assistant").write(
+            f"Complaint classified as:\n"
+            f"- Product: {product}\n"
+            f"- Sub-product: {subproduct}\n"
+            f"- Issue: {assigned_issue}\n\n"
+            f"Creating a Jira task..."
+        )
 
+        # Jira integration
+        os.environ["JIRA_API_TOKEN"] = st.secrets["JIRA_API_TOKEN"]
+        os.environ["JIRA_USERNAME"] = "rich@bu.edu"
+        os.environ["JIRA_INSTANCE_URL"] = "https://is883-genai-r.atlassian.net/"
+        os.environ["JIRA_CLOUD"] = "True"
 
-import os
-from langchain_community.utilities.jira import JiraAPIWrapper
-from langchain_community.agent_toolkits.jira.toolkit import JiraToolkit
-from langchain_openai import ChatOpenAI
-from langchain import hub
-from langchain.agents import AgentExecutor, create_react_agent
-import streamlit as st
+        jira = JiraAPIWrapper()
+        toolkit = JiraToolkit.from_jira_api_wrapper(jira)
+        tools = toolkit.get_tools()
 
-# Environment variables for Jira setup
-os.environ["JIRA_API_TOKEN"] = st.secrets["JIRA_API_TOKEN"]
-os.environ["JIRA_USERNAME"] = "rich@bu.edu"
-os.environ["JIRA_INSTANCE_URL"] = "https://is883-genai-r.atlassian.net/"
-os.environ["JIRA_CLOUD"] = "True"
+        # Fix tool names and descriptions
+        for idx, tool in enumerate(tools):
+            tools[idx].name = tools[idx].name.replace(" ", "_")
+            if "create_issue" in tools[idx].name:
+                tools[idx].description += " Ensure to specify the project ID."
 
-# Function to create a Jira task
-def create_jira_task(client_complaint, assigned_issue):
-    # Initialize Jira API Wrapper and Toolkit
-    jira = JiraAPIWrapper()
-    toolkit = JiraToolkit.from_jira_api_wrapper(jira)
+        # Prepare task creation prompt
+        question = (
+            f"Create a task in my project with the key FST. Assign it to rich@bu.edu. "
+            f"The summary is '{assigned_issue}'. "
+            f"Set the priority to 'Highest' if the issue involves fraud, otherwise set it to 'High'. "
+            f"The description is '{user_input}'."
+        )
 
-    # Fix tool names and descriptions in the toolkit
-    for idx, tool in enumerate(toolkit.tools):
-        toolkit.tools[idx].name = toolkit.tools[idx].name.replace(" ", "_")
-        if "create_issue" in toolkit.tools[idx].name:
-            toolkit.tools[idx].description += " Ensure to specify the project ID."
+        # Create the Jira agent executor
+        chat = ChatOpenAI(openai_api_key=st.secrets["OpenAI_API_KEY"], model="gpt-4o-mini")
+        agent = create_react_agent(chat, tools, hub.pull("hwchase17/react"))
+        agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
 
-    # Add tools for the agent
-    tools = toolkit.get_tools()
-
-    # LLM Setup for LangChain
-    chat = ChatOpenAI(openai_api_key=st.secrets["OpenAI_API_KEY"], model="gpt-4o-mini")
-
-    # Prepare the LangChain ReAct Agent
-    prompt = hub.pull("hwchase17/react")
-    agent = create_react_agent(chat, tools, prompt)
-    agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
-
-    # Prepare the Jira task creation question
-    question = (
-        f"Create a task in my project with the key FST. Take into account that the Key of this project is FST. "
-        f"The task's type is 'Task', assigned to rich@bu.edu. "
-        f"The summary is '{assigned_issue}'. "
-        f"Always assign 'Highest' priority if the '{assigned_issue}' is related to fraudulent activities. Fraudulent activities include terms or contexts like unauthorized access, theft, phishing, or stolen accounts. Be strict in interpreting fraud-related issues. "
-        f"Assign 'High' priority for other types of issues. "
-        f"The description is '{client_complaint}'."
-    )
-
-    try:
-        # Execute the agent to create the Jira task
-        result = agent_executor.invoke({"input": question})
-        return f"Jira task created successfully: {result}"
-    except Exception as e:
-        return f"Error during Jira task creation: {e}"
-
-# Integrate Jira task creation into Streamlit app
-st.title("💬 Financial Support Chatbot with Jira Integration")
-
-# Example user input
-client_complaint = st.text_input("Enter the client complaint:")
-assigned_issue = st.text_input("Enter the assigned issue:")
-
-if st.button("Create Jira Task"):
-    if client_complaint and assigned_issue:
-        jira_result = create_jira_task(client_complaint, assigned_issue)
-        st.write(jira_result)
+        # Execute the task creation
+        try:
+            jira_result = agent_executor.invoke({"input": question})
+            st.chat_message("assistant").write("Task successfully created in Jira!")
+            st.json(jira_result)
+        except Exception as e:
+            st.chat_message("assistant").write(f"Failed to create the Jira task: {e}")
     else:
-        st.warning("Please provide both the client complaint and the assigned issue.")
+        st.chat_message("assistant").write(response)
