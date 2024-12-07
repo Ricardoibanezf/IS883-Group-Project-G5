@@ -5,6 +5,7 @@ from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain_core.prompts import ChatPromptTemplate
 from datetime import date
 import pandas as pd
+import os
 
 # Title
 st.title("💬 Financial Support Chatbot")
