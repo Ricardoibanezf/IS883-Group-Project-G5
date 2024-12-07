@@ -36,64 +36,73 @@ if submitted and user_input:
     # Add user message to session state
     st.session_state.messages.append({"role": "user", "content": user_input})
 
-    # Classification process
-    client_complaint = user_input
+    # If the input is too generic, respond with a friendly clarification message
+    if len(user_input.split()) < 3:
+        bot_response = "I'm here to help with specific complaints. Could you describe your issue in more detail?"
+    else:
+        # Classification process
+        client_complaint = user_input
 
-    # Classify by Product
-    product_categories = df1['Product'].unique()
-    response_product = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": (
-                f"You are a financial expert who classifies customer complaints based on these Product categories: {product_categories.tolist()}. "
-                "Respond with the exact product as written there."
-            )},
-            {"role": "user", "content": f"This is my issue: '{client_complaint}'."}
-        ],
-        max_tokens=20,
-        temperature=0.1
-    )
-    assigned_product = response_product.choices[0].message.content.strip()
+        # Classify by Product
+        product_categories = df1['Product'].unique()
+        response_product = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": (
+                    f"You are a financial expert who classifies customer complaints based on these Product categories: {product_categories.tolist()}. "
+                    "Respond with the exact product as written there."
+                )},
+                {"role": "user", "content": f"This is my issue: '{client_complaint}'."}
+            ],
+            max_tokens=20,
+            temperature=0.1
+        )
+        assigned_product = response_product.choices[0].message.content.strip()
 
-    # Classify by Sub-product
-    subproduct_options = df1[df1['Product'] == assigned_product]['Sub-product'].unique()
-    response_subproduct = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": (
-                f"You are a financial expert who classifies customer complaints based on these Sub-product categories under the product '{assigned_product}': {subproduct_options.tolist()}. "
-                "Respond with the exact sub-product as written there."
-            )},
-            {"role": "user", "content": f"This is my issue: '{client_complaint}'."}
-        ],
-        max_tokens=20,
-        temperature=0.1
-    )
-    assigned_subproduct = response_subproduct.choices[0].message.content.strip()
+        # Classify by Sub-product
+        subproduct_options = df1[df1['Product'] == assigned_product]['Sub-product'].unique()
+        response_subproduct = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": (
+                    f"You are a financial expert who classifies customer complaints based on these Sub-product categories under the product '{assigned_product}': {subproduct_options.tolist()}. "
+                    "Respond with the exact sub-product as written there."
+                )},
+                {"role": "user", "content": f"This is my issue: '{client_complaint}'."}
+            ],
+            max_tokens=20,
+            temperature=0.1
+        )
+        assigned_subproduct = response_subproduct.choices[0].message.content.strip()
 
-    # Classify by Issue
-    issue_options = df1[(df1['Product'] == assigned_product) &
-                        (df1['Sub-product'] == assigned_subproduct)]['Issue'].unique()
-    response_issue = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": (
-                f"You are a financial expert who classifies customer complaints based on these Issue categories under the product '{assigned_product}' and sub-product '{assigned_subproduct}': {issue_options.tolist()}. "
-                "Respond with the exact issue as written there."
-            )},
-            {"role": "user", "content": f"This is my issue: '{client_complaint}'."}
-        ],
-        max_tokens=20,
-        temperature=0.1
-    )
-    assigned_issue = response_issue.choices[0].message.content.strip()
+        # Classify by Issue
+        issue_options = df1[(df1['Product'] == assigned_product) &
+                            (df1['Sub-product'] == assigned_subproduct)]['Issue'].unique()
+        response_issue = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": (
+                    f"You are a financial expert who classifies customer complaints based on these Issue categories under the product '{assigned_product}' and sub-product '{assigned_subproduct}': {issue_options.tolist()}. "
+                    "Respond with the exact issue as written there."
+                )},
+                {"role": "user", "content": f"This is my issue: '{client_complaint}'."}
+            ],
+            max_tokens=20,
+            temperature=0.1
+        )
+        assigned_issue = response_issue.choices[0].message.content.strip()
 
-    # Bot Response
-    bot_response = (
-        f"I understand your issue. Here is the classification:\n\n"
-        f"- **Product:** {assigned_product}\n"
-        f"- **Sub-product:** {assigned_subproduct}\n"
-        f"- **Issue:** {assigned_issue}\n\n"
-        f"If you have any further questions, let me know!"
-    )
+        # Construct the bot's response
+        if "I'm sorry" not in assigned_product:
+            bot_response = (
+                f"I understand your issue. Here is the classification:\n\n"
+                f"- **Product:** {assigned_product}\n"
+                f"- **Sub-product:** {assigned_subproduct}\n"
+                f"- **Issue:** {assigned_issue}\n\n"
+                f"If you have any further questions, let me know!"
+            )
+        else:
+            bot_response = "I'm sorry, but I couldn't classify your issue. Could you provide more details?"
+
+    # Add bot response to session state
     st.session_state.messages.append({"role": "assistant", "content": bot_response})
