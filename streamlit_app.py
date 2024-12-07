@@ -27,10 +27,12 @@ for message in st.session_state.messages:
     else:
         st.markdown(f"**Bot:** {message['content']}")
 
-# User Input
-user_input = st.text_input("Your message:")
+# User Input Form
+with st.form("user_input_form", clear_on_submit=True):
+    user_input = st.text_input("Your message:")
+    submitted = st.form_submit_button("Send")
 
-if user_input:
+if submitted and user_input:
     # Add user message to session state
     st.session_state.messages.append({"role": "user", "content": user_input})
 
@@ -95,6 +97,3 @@ if user_input:
         f"If you have any further questions, let me know!"
     )
     st.session_state.messages.append({"role": "assistant", "content": bot_response})
-
-    # Clear user input (to refresh the chat interface)
-    st.session_state["user_input"] = ""
