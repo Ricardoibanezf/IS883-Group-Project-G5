@@ -2,16 +2,15 @@ import streamlit as st
 import pandas as pd
 import os
 from openai import OpenAI
-from google.colab import userdata
 
 # Streamlit App
 st.title("Customer Complaint Classifier")
 
-# Load API Key for OpenAI
-st.sidebar.header("API Key Configuration")
-my_secret_key = st.sidebar.text_input("Enter your OpenAI API Key", type="password")
-if my_secret_key:
-    os.environ["OPENAI_API_KEY"] = my_secret_key
+# Load API Key from Streamlit Secrets
+if "OPENAI_API_KEY" not in st.secrets:
+    st.error("Please set your OpenAI API key in Streamlit Secrets!")
+else:
+    os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
     client = OpenAI()
 
 # Load Dataset
@@ -25,70 +24,59 @@ st.dataframe(df1)
 st.header("Client Complaint")
 client_complaint = st.text_area("Enter the client's complaint:", "")
 if st.button("Classify Complaint") and client_complaint:
-    # Classification process
-    classified_data = []
+    try:
+        # Classification process
+        classified_data = []
 
-    # Classify by Product
-    product_categories = df1['Product'].unique()
+        # Classify by Product
+        product_categories = df1['Product'].unique()
 
-    response_product = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": (
-                f"You are a financial expert who classifies customer complaints based on these Product categories: {product_categories.tolist()}. "
-                "Respond with the exact product as written there."
-            )},
-            {"role": "user", "content": f"This is my issue: '{client_complaint}'."}
-        ],
-        max_tokens=20,
-        temperature=0.1
-    )
-    assigned_product = response_product.choices[0].message.content.strip()
+        response_product = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": (
+                    f"You are a financial expert who classifies customer complaints based on these Product categories: {product_categories.tolist()}. "
+                    "Respond with the exact product as written there."
+                )},
+                {"role": "user", "content": f"This is my issue: '{client_complaint}'."}
+            ],
+            max_tokens=20,
+            temperature=0.1
+        )
+        assigned_product = response_product.choices[0].message.content.strip()
 
-    # Classify by Sub-product
-    subproduct_options = df1[df1['Product'] == assigned_product]['Sub-product'].unique()
+        # Classify by Sub-product
+        subproduct_options = df1[df1['Product'] == assigned_product]['Sub-product'].unique()
 
-    response_subproduct = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": (
-                f"You are a financial expert who classifies customer complaints based on these Sub-product categories under the product '{assigned_product}': {subproduct_options.tolist()}. "
-                "Respond with the exact sub-product as written there."
-            )},
-            {"role": "user", "content": f"This is my issue: '{client_complaint}'."}
-        ],
-        max_tokens=20,
-        temperature=0.1
-    )
-    assigned_subproduct = response_subproduct.choices[0].message.content.strip()
+        response_subproduct = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": (
+                    f"You are a financial expert who classifies customer complaints based on these Sub-product categories under the product '{assigned_product}': {subproduct_options.tolist()}. "
+                    "Respond with the exact sub-product as written there."
+                )},
+                {"role": "user", "content": f"This is my issue: '{client_complaint}'."}
+            ],
+            max_tokens=20,
+            temperature=0.1
+        )
+        assigned_subproduct = response_subproduct.choices[0].message.content.strip()
 
-    # Classify by Issue
-    issue_options = df1[(df1['Product'] == assigned_product) &
-                        (df1['Sub-product'] == assigned_subproduct)]['Issue'].unique()
+        # Classify by Issue
+        issue_options = df1[(df1['Product'] == assigned_product) &
+                            (df1['Sub-product'] == assigned_subproduct)]['Issue'].unique()
 
-    response_issue = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": (
-                f"You are a financial expert who classifies customer complaints based on these Issue categories under the product '{assigned_product}' and sub-product '{assigned_subproduct}': {issue_options.tolist()}. "
-                "Respond with the exact issue as written there."
-            )},
-            {"role": "user", "content": f"This is my issue: '{client_complaint}'."}
-        ],
-        max_tokens=20,
-        temperature=0.1
-    )
-    assigned_issue = response_issue.choices[0].message.content.strip()
-
-    # Append results to classified_data
-    classified_data.append({
-        "Complaint": client_complaint,
-        "Assigned Product": assigned_product,
-        "Assigned Sub-product": assigned_subproduct,
-        "Assigned Issue": assigned_issue
-    })
-
-    # Display classification results
-    st.header("Classification Results")
-    st.json(classified_data)
+        response_issue = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": (
+                    f"You are a financial expert who classifies customer complaints based on these Issue categories under the product '{assigned_product}' and sub-product '{assigned_subproduct}': {issue_options.tolist()}. "
+                    "Respond with the exact issue as written there."
+                )},
+                {"role": "user", "content": f"This is my issue: '{client_complaint}'."}
+            ],
+            max_tokens=20,
+            temperature=0.1
+        )
+        assigned_issue = response_issue.choices[0].message.content.strip()
 
