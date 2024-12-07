@@ -3,4 +3,4 @@ openai
 langchain
 langchain_openai
 pandas
-atlassian
+atlassian-python-api
