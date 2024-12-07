@@ -133,11 +133,11 @@ os.environ["JIRA_CLOUD"] = "True"
 question = (
     f"Create a task in my project with the key FST. Take into account tha the Key of this project is FST "
     f"The task's type is 'Task', assignee to rich@bu.edu,"
-    f"The summary is '{issue_match}'."
-    #f"with the priority '{priority}' and the description '{client_complaint}'. "
-    f"Always assign 'Highest' priority if the '{issue_match}' is related to fraudulent activities. Fraudulent activities include terms or contexts like unauthorized access, theft, phishing, or stolen accounts. Be strict in interpreting fraud-related issues."
+    f"The summary is 'prueba'."
+    #f"with the priority 'prueba' and the description '{client_complaint}'. "
+    f"Always assign 'Highest' priority if the 'hola es prueba' is related to fraudulent activities. Fraudulent activities include terms or contexts like unauthorized access, theft, phishing, or stolen accounts. Be strict in interpreting fraud-related issues."
     f"with the priority 'High' for other type of issues"
-    f"with the description '{client_complaint}'. "
+    f"with the description 'hola prueba'. "
     #f"with a status  'TO DO'. "
 
 
