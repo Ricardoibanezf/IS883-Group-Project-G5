@@ -121,7 +121,7 @@ if user_input := st.chat_input("How can I help?"):
     st.chat_message("assistant").write(response)
 
 
-    os.environ["JIRA_API_TOKEN"] = st.secrets('JIRA_API_TOKEN')
+    os.environ["JIRA_API_TOKEN"] = st.secrets("JIRA_API_TOKEN")
     os.environ["JIRA_USERNAME"] = "rich@bu.edu"
     os.environ["JIRA_INSTANCE_URL"] = "https://is883-genai-r.atlassian.net/"
     os.environ["JIRA_CLOUD"] = "True"
