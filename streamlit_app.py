@@ -119,3 +119,72 @@ if user_input := st.chat_input("How can I help?"):
 
     # Display the assistant's response
     st.chat_message("assistant").write(response)
+
+
+import os
+from langchain_community.utilities.jira import JiraAPIWrapper
+from langchain_community.agent_toolkits.jira.toolkit import JiraToolkit
+from langchain_openai import ChatOpenAI
+from langchain import hub
+from langchain.agents import AgentExecutor, create_react_agent
+import streamlit as st
+
+# Environment variables for Jira setup
+os.environ["JIRA_API_TOKEN"] = st.secrets["JIRA_API_TOKEN"]
+os.environ["JIRA_USERNAME"] = st.secrets["JIRA_USERNAME"]
+os.environ["JIRA_INSTANCE_URL"] = st.secrets["JIRA_INSTANCE_URL"]
+os.environ["JIRA_CLOUD"] = "True"
+
+# Function to create a Jira task
+def create_jira_task(client_complaint, assigned_issue):
+    # Initialize Jira API Wrapper and Toolkit
+    jira = JiraAPIWrapper()
+    toolkit = JiraToolkit.from_jira_api_wrapper(jira)
+
+    # Fix tool names and descriptions in the toolkit
+    for idx, tool in enumerate(toolkit.tools):
+        toolkit.tools[idx].name = toolkit.tools[idx].name.replace(" ", "_")
+        if "create_issue" in toolkit.tools[idx].name:
+            toolkit.tools[idx].description += " Ensure to specify the project ID."
+
+    # Add tools for the agent
+    tools = toolkit.get_tools()
+
+    # LLM Setup for LangChain
+    chat = ChatOpenAI(openai_api_key=st.secrets["OpenAI_API_KEY"], model="gpt-4o-mini")
+
+    # Prepare the LangChain ReAct Agent
+    prompt = hub.pull("hwchase17/react")
+    agent = create_react_agent(chat, tools, prompt)
+    agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
+
+    # Prepare the Jira task creation question
+    question = (
+        f"Create a task in my project with the key FST. Take into account that the Key of this project is FST. "
+        f"The task's type is 'Task', assigned to rich@bu.edu. "
+        f"The summary is '{assigned_issue}'. "
+        f"Always assign 'Highest' priority if the '{assigned_issue}' is related to fraudulent activities. Fraudulent activities include terms or contexts like unauthorized access, theft, phishing, or stolen accounts. Be strict in interpreting fraud-related issues. "
+        f"Assign 'High' priority for other types of issues. "
+        f"The description is '{client_complaint}'."
+    )
+
+    try:
+        # Execute the agent to create the Jira task
+        result = agent_executor.invoke({"input": question})
+        return f"Jira task created successfully: {result}"
+    except Exception as e:
+        return f"Error during Jira task creation: {e}"
+
+# Integrate Jira task creation into Streamlit app
+st.title("💬 Financial Support Chatbot with Jira Integration")
+
+# Example user input
+client_complaint = st.text_input("Enter the client complaint:")
+assigned_issue = st.text_input("Enter the assigned issue:")
+
+if st.button("Create Jira Task"):
+    if client_complaint and assigned_issue:
+        jira_result = create_jira_task(client_complaint, assigned_issue)
+        st.write(jira_result)
+    else:
+        st.warning("Please provide both the client complaint and the assigned issue.")
