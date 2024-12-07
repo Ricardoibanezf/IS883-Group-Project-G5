@@ -6,6 +6,9 @@ from langchain_core.prompts import ChatPromptTemplate
 from datetime import date
 import pandas as pd
 import os
+from langchain.agents import AgentExecutor, create_react_agent
+from langchain_community.utilities.jira import JiraAPIWrapper
+from langchain_community.agent_toolkits.jira.toolkit import JiraToolkit
 
 # Title
 st.title("💬 Financial Support Chatbot")
